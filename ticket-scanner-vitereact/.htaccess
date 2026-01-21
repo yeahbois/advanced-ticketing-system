@@ -1,0 +1,27 @@
+RewriteEngine On
+RewriteBase /
+
+# =========================
+# 1️⃣ REDIRECT FIXED ROUTES
+# =========================
+RewriteRule ^$ https://ospkmhthamrin.com/oh/ticket [R=302,L]
+RewriteRule ^ticket/?$ https://ospkmhthamrin.com/oh/ticket [R=302,L]
+RewriteRule ^database/?$ https://ospkmhthamrin.com/oh/database [R=302,L]
+RewriteRule ^dashboard/?$ https://ospkmhthamrin.com/oh/dashboard [R=302,L]
+
+# =========================
+# 2️⃣ ALLOW REAL FILES & ASSETS
+# =========================
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# =========================
+# 3️⃣ ALLOW SPA ROUTE (/scan)
+# =========================
+RewriteRule ^scan(/.*)?$ index.html [L]
+
+# =========================
+# 4️⃣ FALLBACK → MOVE TO MAIN DOMAIN (SAME PATH)
+# =========================
+RewriteRule ^(.*)$ https://ospkmhthamrin.com/$1 [R=302,L]

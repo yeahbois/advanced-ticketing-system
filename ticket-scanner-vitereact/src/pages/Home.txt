@@ -1,0 +1,194 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
+
+type ApiResponse = {
+  status: "berhasil" | "error";
+  message: string;
+};
+
+export default function Home() {
+  const qrRegionId = "qr-reader";
+  const qrCodeRef = useRef<Html5Qrcode | null>(null);
+
+  const successAudioRef = useRef<HTMLAudioElement | null>(null);
+  const errorAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
+  const [selectedCamera, setSelectedCamera] = useState("");
+  const [lastScanned, setLastScanned] = useState<string | null>(null);
+
+  const [alert, setAlert] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const scanningLockRef = useRef(false); // prevent double scan spam
+
+  /* INIT */
+  useEffect(() => {
+    successAudioRef.current = new Audio("/dominic-real.mp3");
+    errorAudioRef.current = new Audio("/dominic-real.mp3");
+
+    successAudioRef.current.volume = 1.0;
+    errorAudioRef.current.volume = 1.0;
+
+    Html5Qrcode.getCameras().then((devices) => {
+      if (devices.length) {
+        setCameras(devices);
+        setSelectedCamera(devices[0].id);
+      }
+    });
+
+    return () => {
+      qrCodeRef.current?.stop().catch(() => {});
+      qrCodeRef.current?.clear();
+    };
+  }, []);
+
+  /* START CAMERA */
+  useEffect(() => {
+    if (!selectedCamera) return;
+
+    const start = async () => {
+      if (qrCodeRef.current) {
+        await qrCodeRef.current.stop().catch(() => {});
+        await qrCodeRef.current.clear();
+      }
+
+      const scanner = new Html5Qrcode(qrRegionId);
+      qrCodeRef.current = scanner;
+
+      await scanner.start(
+        { deviceId: { exact: selectedCamera } },
+        {
+          fps: 12,
+          qrbox: { width: 340, height: 340 },
+          aspectRatio: 1,
+        },
+        async (decodedText) => {
+          if (scanningLockRef.current) return;
+          scanningLockRef.current = true;
+
+          setLastScanned(decodedText);
+          await handlePresent(decodedText);
+
+          setTimeout(() => {
+            scanningLockRef.current = false;
+          }, 1500); // prevent double scan
+        },
+        () => {}
+      );
+
+      // Mirror camera
+      setTimeout(() => {
+        const video = document.querySelector("#qr-reader video") as HTMLVideoElement;
+        if (video) video.style.transform = "scaleX(-1)";
+      }, 300);
+    };
+
+    start();
+  }, [selectedCamera]);
+
+  /* CALL PRESENT API */
+  const handlePresent = async (qr: string) => {
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/oh/present?qrString=${encodeURIComponent(qr)}`
+      );
+      const data: ApiResponse = await res.json();
+
+      if (data.status === "berhasil") {
+        successAudioRef.current?.play().catch(() => {});
+        setAlert({ type: "success", message: data.message });
+      } else {
+        errorAudioRef.current?.play().catch(() => {});
+        setAlert({ type: "error", message: data.message });
+      }
+
+      // auto clear alert
+      setTimeout(() => setAlert(null), 3000);
+    } catch (err) {
+      errorAudioRef.current?.play().catch(() => {});
+      setAlert({ type: "error", message: "Server error / API unreachable" });
+      setTimeout(() => setAlert(null), 3000);
+    }
+  };
+
+  return (
+    <div className="min-h-screen w-full flex flex-col bg-[#0B1220] text-white">
+      {/* NAVBAR */}
+      <header className="h-20 px-6 md:px-10 flex items-center justify-between bg-[#0F172A] border-b border-blue-900">
+        <div>
+          <h1 className="text-xl font-semibold tracking-wide text-blue-400">
+            REGISTRASI ULANG OPEN HOUSE
+          </h1>
+          <p className="text-sm text-blue-200/70">
+            E-TICKETING SYSTEM BY OSPK M.H. THAMRIN
+          </p>
+        </div>
+      </header>
+
+      {/* MAIN */}
+      <main className="flex-1 grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6 p-4 md:p-8">
+        {/* CAMERA */}
+        <section className="relative w-full h-[65vh] md:h-full rounded-3xl overflow-hidden bg-black shadow-2xl border border-blue-900">
+          <div id={qrRegionId} className="absolute inset-0" />
+
+          {/* SCANNER FRAME */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-[70vw] max-w-[340px] aspect-square rounded-2xl border-4 border-blue-500 shadow-[0_0_40px_#3B82F6]" />
+          </div>
+
+          {/* HOT ALERT */}
+          {alert && (
+            <div
+              className={`absolute top-5 left-1/2 -translate-x-1/2 px-6 py-3 rounded-xl text-sm font-semibold shadow-xl
+              ${
+                alert.type === "success"
+                  ? "bg-green-600 text-white"
+                  : "bg-red-600 text-white"
+              }`}
+            >
+              {alert.message}
+            </div>
+          )}
+        </section>
+
+        {/* PANEL */}
+        <aside className="flex flex-col justify-center gap-6">
+          <div className="bg-[#0F172A] border border-blue-900 rounded-2xl p-5">
+            <p className="text-sm text-blue-300 mb-2">
+              Sumber Kamera
+            </p>
+            <select
+              value={selectedCamera}
+              onChange={(e) => setSelectedCamera(e.target.value)}
+              className="w-full p-3 rounded-xl bg-[#020617] border border-blue-900 outline-none text-white"
+            >
+              {cameras.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label || "Camera"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {lastScanned && (
+            <div className="bg-[#0F172A] border border-blue-900 rounded-2xl p-4">
+              <p className="text-xs text-blue-300 mb-1">
+                Terakhir di Scan
+              </p>
+              <p className="font-mono text-sm break-words text-blue-100">
+                {lastScanned}
+              </p>
+            </div>
+          )}
+        </aside>
+      </main>
+    </div>
+  );
+}
+
+// CHECK THE API URL ALWAYS
